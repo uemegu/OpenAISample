@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>whisper sample</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <div id="content">
+      <button id="start">Start</button>
+      <div id="result"></div>
+    </div>
+    <audio id="testAudio" controls></audio>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.13.1/dist/ort.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad/dist/index.browser.js"></script>
+    <script>
+      let myvad;
+      const startAudio = async (onRecorded) => {
+        try {
+          if (!myvad) {
+            myvad = await vad.MicVAD.new({
+              onSpeechEnd: async (arr) => {
+                const wavBuffer = vad.utils.encodeWAV(arr);
+                var file = new File([wavBuffer], `audio.wav`);
+                document.getElementById("testAudio").src =
+                  URL.createObjectURL(file);
+                try {
+                  onRecorded(file);
+                } catch (err) {
+                  console.log(err);
+                }
+              },
+            });
+          }
+
+          myvad.start();
+        } catch (e) {
+          console.error("Failed:", e);
+        }
+      };
+
+      const stopAudio = () => {
+        myvad.pause();
+      };
+
+      const callTranscriptions = (file, callback) => {
+        const XHR = new XMLHttpRequest();
+        XHR.addEventListener("load", (event) => {
+          callback(JSON.parse(event.target.responseText).text);
+        });
+        XHR.addEventListener("error", (event) => {
+          alert("error");
+        });
+        XHR.open("POST", "https://api.openai.com/v1/audio/transcriptions");
+        //XHR.setRequestHeader("Content-Type", "multipart/form-data"); これを書いたらサーバーエラーになる
+        XHR.setRequestHeader("Authorization", "Bearer ここにAPIキーを書く");
+
+        var formData = new FormData();
+        formData.append("model", "whisper-1");
+        formData.append("language", "ja");
+        formData.append("file", file);
+        XHR.send(formData);
+      };
+
+      document.addEventListener("DOMContentLoaded", function () {
+        const recorded = (file) => {
+          callTranscriptions(file, (text) => {
+            console.log(text);
+            if (!text) return;
+            document.getElementById("result").innerHTML += text;
+          });
+        };
+
+        startButton = document.getElementById("start");
+        startButton.addEventListener("click", () => {
+          if (startButton.innerHTML === "Stop") {
+            startButton.innerHTML = "Start";
+            stopAudio();
+          } else {
+            startButton.innerHTML = "Stop";
+            startAudio(recorded);
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
