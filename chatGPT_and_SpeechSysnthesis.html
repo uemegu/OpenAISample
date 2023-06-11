@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>similar search</title>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+      }
+      .content {
+        padding: 1rem;
+      }
+      .userMessage {
+        font-style: italic;
+        color: #888;
+        margin-top: 1rem;
+      }
+      .aiResponse {
+        font-weight: bold;
+        margin-left: 1rem;
+      }
+    </style>
+  </head>
+  <body
+    style="
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+    "
+  >
+    <div class="content">
+      <div>
+        <div>
+          <h2>前提</h2>
+          このサンプルは、VOICEVOXのサーバーがローカルで起動している前提で動きます。<br />
+          また、JavaScript中にあるChatGPTのAPI KEYを入力する必要があります。
+        </div>
+        <div>
+          <h2>システムプロンプト(role=system)</h2>
+          <input type="text" id="promptForm" />
+          <button id="set">セット</button>
+        </div>
+        <div>
+          <h2>メッセージ(role=user)</h2>
+          <input type="text" id="userForm" />
+          <button id="send">送信</button>
+        </div>
+        <div>
+          <h2>会話履歴</h2>
+          <div id="chat"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // VOICEBOX
+      const getVoice = (text, sequence, speakerId, callback) => {
+        let url1 = `http://127.0.0.1:50021/audio_query?speaker=${speakerId}&text=${text}`;
+        fetch(url1, {
+          method: "POST",
+        })
+          .then((response) => response.json())
+          .then((json) => {
+            let url2 = `http://127.0.0.1:50021/synthesis?speaker=${speakerId}`;
+            fetch(url2, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(json),
+            })
+              .then((wav) => {
+                return wav.blob();
+              })
+              .then((blob) => {
+                let url = window.URL.createObjectURL(blob);
+                let audio = new Audio(url);
+                callback(audio, sequence);
+              })
+              .catch((error) => {
+                console.error("Error:", error);
+              });
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+          });
+      };
+    </script>
+
+    <script>
+      // OpenAI
+      const callChatGPTStream = async (texts, temperature, callback) => {
+        const completion = await fetch(
+          "https://api.openai.com/v1/chat/completions",
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ここにAPIキーを書く`,
+            },
+            method: "POST",
+            body: JSON.stringify({
+              messages: texts,
+              temperature: temperature,
+              model: "gpt-3.5-turbo",
+              stream: true,
+            }),
+          }
+        );
+
+        let allSentence = "";
+        let sentence = "";
+        const finishChars = ["。", "、", "!", "！", "?", "？", "\n"];
+        const addChars = (delta) => {
+          if (!delta) return;
+
+          let isFinish = false;
+          let nextSentence = null;
+          if (delta === "[DONE]") {
+            isFinish = true;
+          } else {
+            finishChars.forEach((char) => {
+              if (delta.includes(char)) {
+                isFinish = true;
+                sentence += delta.substring(0, delta.indexOf(char) + 1);
+                if (delta.indexOf(char) != delta.length - 1) {
+                  nextSentence = delta.substring(delta.indexOf(char) + 1);
+                }
+              }
+            });
+          }
+          if (isFinish) {
+            if (sentence) {
+              allSentence += sentence;
+              callback(sentence);
+            }
+            sentence = "";
+            if (nextSentence) sentence += nextSentence;
+          } else {
+            sentence += delta;
+          }
+          if (delta === "[DONE]") {
+            texts.push({
+              role: "assistant",
+              content: allSentence,
+            });
+            allSentence = "";
+          }
+        };
+
+        // refer: https://zenn.dev/himanushi/articles/99579cf407c30b
+        const reader = completion.body?.getReader();
+        if (completion.status !== 200 || !reader) {
+          return "error";
+        }
+        const decoder = new TextDecoder("utf-8");
+        try {
+          const read = async () => {
+            const { done, value } = await reader.read();
+            if (done) return reader.releaseLock();
+            const chunk = decoder.decode(value, { stream: true });
+
+            const jsons = chunk
+              .split("data:")
+              .map((data) => {
+                const trimData = data.trim();
+                if (trimData === "") return undefined;
+                if (trimData === "[DONE]") {
+                  addChars(trimData);
+                  return undefined;
+                }
+                return JSON.parse(data.trim()).choices[0].delta.content;
+              })
+              .filter((data) => data)
+              .join("");
+
+            addChars(jsons);
+            return read();
+          };
+          await read();
+        } catch (e) {
+          console.error(e);
+        }
+        reader.releaseLock();
+      };
+    </script>
+
+    <script>
+      // Application
+      let talkingCount = 0;
+      const history = [];
+
+      let audioQueue = [];
+      let audioSequence = 0;
+      const getChatResponse = (text) => {
+        history.push({
+          role: "user",
+          content: text,
+        });
+
+        callChatGPTStream(history, 0.8, (response) => {
+          const tmp = document.getElementById("chat");
+          tmp.innerHTML =
+            tmp.innerHTML + `<div class="aiResponse" >${response}</div>\n`;
+          audioSequence++;
+          getVoice(response, audioSequence, "2", (audio, sequence) => {
+            if (!audio) return;
+            audioQueue.push({ audio: audio, no: sequence });
+            if (audioQueue.length === 1) {
+              audio.play();
+              const waitFinishAudio = () => {
+                let interval = setInterval(() => {
+                  if (audioQueue[0].audio.paused) {
+                    audioQueue.shift();
+                    clearInterval(interval);
+                    if (audioQueue.length > 0) {
+                      if (audioQueue.length > 1) {
+                        audioQueue = audioQueue.sort((a, b) => a.no - b.no);
+                      }
+                      audioQueue[0].audio.play();
+                      waitFinishAudio();
+                    }
+                  }
+                }, 1000);
+              };
+              waitFinishAudio();
+            }
+          });
+        });
+      };
+
+      const sendMessage = () => {
+        const userForm = document.getElementById("userForm");
+        const message = userForm.value;
+        userForm.value = "";
+        const tmp = document.getElementById("chat");
+        tmp.innerHTML =
+          tmp.innerHTML + `<div class="userMessage" >${message}</div>\n`;
+        getChatResponse(message);
+      };
+
+      document.addEventListener("DOMContentLoaded", function () {
+        document.getElementById("send").addEventListener("click", sendMessage);
+        document.getElementById("set").addEventListener("click", () => {
+          const systemForm = document.getElementById("promptForm");
+          const prompt = systemForm.value;
+          if (prompt) {
+            history.push({
+              role: "system",
+              content: prompt,
+            });
+          }
+          systemForm.value = "";
+        });
+      });
+    </script>
+  </body>
+</html>
