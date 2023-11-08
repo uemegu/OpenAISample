@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>tts_browser_sample</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <h1 style="font-weight: 500">tts_browser_sample</h1>
+    <div>
+      <textarea id="text" rows="5" cols="33">
+        お、お兄ちゃんのためじゃないんだからね！！</textarea
+      >
+    </div>
+    <div>
+      <select id="voice_actor">
+        <option value="alloy">alloy</option>
+        <option value="echo">echo</option>
+        <option value="fable">fable</option>
+        <option value="onyx">onyx</option>
+        <option value="nova">nova</option>
+        <option value="shimmer">shimmer</option>
+      </select>
+    </div>
+    <div>
+      <button id="sendButton">send</button>
+    </div>
+    <script>
+      const callTTS = (body, callback) => {
+        fetch(`https://api.openai.com/v1/audio/speech`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ここにAPI KEYを書く`,
+          },
+          method: "POST",
+          body: JSON.stringify(body),
+        })
+          .then((wav) => {
+            return wav.blob();
+          })
+          .then((file) => {
+            let url = window.URL.createObjectURL(file);
+            let audio = new Audio(url);
+            callback(audio);
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+          });
+      };
+    </script>
+    <script>
+      const button = document.getElementById("sendButton");
+      button.addEventListener("click", () => {
+        const message = document.getElementById("text").value;
+        callTTS(
+          {
+            model: "tts-1",
+            input: message,
+            voice: document.getElementById("voice_actor").value,
+          },
+          (audio) => {
+            audio?.play();
+          }
+        );
+      });
+    </script>
+  </body>
+</html>
