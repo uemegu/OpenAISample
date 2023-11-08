@@ -48,17 +48,15 @@
       };
     </script>
     <script>
-      const button = document.getElementById("sendButton");
-      button.addEventListener("click", () => {
-        const message = document.getElementById("text").value;
+      document.getElementById("sendButton").addEventListener("click", () => {
         callTTS(
           {
             model: "tts-1",
-            input: message,
+            input: document.getElementById("text").value,
             voice: document.getElementById("voice_actor").value,
           },
           (audio) => {
-            audio?.play();
+            audio.play();
           }
         );
       });
