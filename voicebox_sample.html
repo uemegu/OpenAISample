@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>voicevox</title>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+      }
+      .content {
+        padding: 1rem;
+      }
+      .userMessage {
+        font-style: italic;
+        color: #888;
+        margin-top: 1rem;
+      }
+      .aiResponse {
+        font-weight: bold;
+        margin-left: 1rem;
+      }
+    </style>
+  </head>
+  <body
+    style="
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+    "
+  >
+    <div class="content">
+      <div>
+        <div>
+          <h2>前提</h2>
+          このサンプルは、VOICEVOXのサーバーがローカルで起動している前提で動きます。
+        </div>
+        <h2>セリフ</h2>
+        <div>
+          <textarea
+            type="text"
+            id="userForm"
+            style="width: 20rem; height: 6rem"
+          >
+テストだよ</textarea
+          >
+        </div>
+        <div>
+          <select id="speakers" style="height: 2rem"></select>
+          <button id="send" style="width: 6rem; height: 2rem">送信</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // VOICEBOX
+      const getVoice = (text, speakerId) => {
+        let url1 = `http://127.0.0.1:50021/audio_query?speaker=${speakerId}&text=${text}`;
+        fetch(url1, {
+          method: "POST",
+        })
+          .then((response) => response.json())
+          .then((json) => {
+            let url2 = `http://127.0.0.1:50021/synthesis?speaker=${speakerId}`;
+            fetch(url2, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(json),
+            })
+              .then((wav) => {
+                return wav.blob();
+              })
+              .then((blob) => {
+                let url = window.URL.createObjectURL(blob);
+                let audio = new Audio(url);
+                audio.play();
+              })
+              .catch((error) => {
+                console.error("Error:", error);
+              });
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+          });
+      };
+    </script>
+
+    <script>
+      const sendMessage = () => {
+        const userForm = document.getElementById("userForm");
+        const message = userForm.value;
+        const speakers = document.getElementById("speakers");
+        getVoice(message, speakers.value);
+      };
+
+      document.addEventListener("DOMContentLoaded", function () {
+        document.getElementById("send").addEventListener("click", sendMessage);
+
+        let url = `http://127.0.0.1:50021/speakers`;
+        fetch(url, {
+          method: "GET",
+        })
+          .then((response) => response.json())
+          .then((json) => {
+            const result = json.flatMap((item) =>
+              item.styles.map((style) => {
+                return { name: `${item.name}: ${style.name}`, value: style.id };
+              })
+            );
+            const select = document.getElementById("speakers");
+            result.forEach((element) => {
+              const option = document.createElement("option");
+              option.innerText = element.name;
+              option.value = element.value;
+              select.appendChild(option);
+            });
+          });
+      });
+    </script>
+  </body>
+</html>
