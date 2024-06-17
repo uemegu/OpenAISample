@@ -31,3 +31,9 @@ This is a sample that synthesizes speech using VOICEVOX while processing the res
 OpenAI の　Text-to-Speech をブラウザ完結で動かすサンプルです
 
 This is a Text-to-Speech service of OpenAI.
+
+## voicebox_sample.html
+
+ローカルのVOICEVOXサーバーを呼び出して音声合成をするサンプルです
+
+This is a sample that calls a local VOICEVOX server and synthesizes speech.
